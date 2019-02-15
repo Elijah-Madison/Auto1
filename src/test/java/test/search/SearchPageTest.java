@@ -10,7 +10,7 @@ import page.search.SearchPage;
 public class SearchPageTest extends SearchPage {
     private final static String[] LANGUAGE = {"de", "es", "nl", "nl-be"};
     private static final int[] YEAR = {2015, 2016, 2017};
-    private static final String[] sortBy = {"Höchster Preis", "Niedrigster Preis"};
+    private static final String[] sortBy = {"Highest price", "Lowest price"}; //or can use HashMap -> key, value = "Highest price","2"...
 
     SearchPageTest() {
         super(LANGUAGE[0]);

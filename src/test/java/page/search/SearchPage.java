@@ -50,7 +50,11 @@ public class SearchPage {
     protected void sortBy(String sortBy) {
         WebElement leftMenuYearEl = BaseMethod.getElementWithWaitForVisibility(driver, searchMenuTopSortByFilter, 5);
         select = new Select(leftMenuYearEl);
-        select.selectByVisibleText(sortBy);
+        if(sortBy.equalsIgnoreCase("Highest price"))
+            select.selectByValue("2");
+        else {
+            select.selectByValue("3"); //Lowest price
+        }
     }
 
     private Integer getFoundResultNumber() {
@@ -86,6 +90,7 @@ public class SearchPage {
     protected Boolean checkMatchForAllResults(int year) {
         String currentUrl = driver.getCurrentUrl();
         int overallPagesNum = getOverallPagesNum();
+
         for (int i = 1; i <= overallPagesNum; ) {
             //close banner if appears
             CallCenterBanner.closeCallCenterBanner(driver);
