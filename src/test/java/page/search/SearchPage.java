@@ -3,6 +3,7 @@ package page.search;
 import banner.CallCenterBanner;
 import core.BaseMethod;
 import core.DriverConfig;
+
 import org.openqa.selenium.By;
 import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.WebDriver;
@@ -10,6 +11,9 @@ import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.Select;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static page.search.SearchLeftMenu.switchYear;
 
@@ -23,6 +27,7 @@ public class SearchPage {
 
     private By searchMenuTopSortByFilter = By.xpath(".//select[@name='sort']");
     private By foundResultNumber = By.xpath(".//div[@data-qa-selector='results-amount']");
+    private By searchResultForm = By.xpath(".//div[@data-qa-selector='results-found']");
     private By firstRegistrationMonthAndYear = By.xpath(".//li[@data-qa-selector='spec'][1]");
     private String lastSearchResultPageHref = ".//span[@aria-label='Last']/ancestor::a";
     private By lastSearchResultPage = By.xpath(lastSearchResultPageHref);
@@ -50,13 +55,14 @@ public class SearchPage {
     protected void sortBy(String sortBy) {
         WebElement leftMenuYearEl = BaseMethod.getElementWithWaitForVisibility(driver, searchMenuTopSortByFilter, 5);
         select = new Select(leftMenuYearEl);
-        if(sortBy.equalsIgnoreCase("Highest price"))
+        if (sortBy.equalsIgnoreCase("Highest price"))
             select.selectByValue("2");
         else {
             select.selectByValue("3"); //Lowest price
         }
     }
 
+    //get number of overall records was found
     private Integer getFoundResultNumber() {
         WebElement foundResultNumAndText = BaseMethod.getElementWithWaitForVisibility(driver, foundResultNumber, 5);
         int indexOfSpace = foundResultNumAndText.getText().indexOf(" ");
@@ -64,6 +70,7 @@ public class SearchPage {
         return Integer.parseInt(foundResultNum);
     }
 
+    //get number of overall pages was found
     private Integer getOverallPagesNum() {
         String lastPageNum;
         boolean isLastPage = true;
@@ -74,8 +81,9 @@ public class SearchPage {
             isLastPage = false;
         }
         if (isLastPage) return 1;
-        System.out.println(isLastPage);
-        String lastPageNumHref = BaseMethod.getElementWithWaitForVisibility(driver, lastSearchResultPage, 5).getAttribute("href").toString();
+        String lastPageNumHref = BaseMethod.getElementWithWaitForVisibility(driver, lastSearchResultPage, 5)
+                .getAttribute("href")
+                .toString();
         int indexOfAnd = lastPageNumHref.indexOf("&");
         int indexOfEqual = lastPageNumHref.indexOf("=");
 
@@ -95,11 +103,12 @@ public class SearchPage {
             //close banner if appears
             CallCenterBanner.closeCallCenterBanner(driver);
 
+            //choose overloaded method for test
             if (year != 0) {
-                if (!checkFirstRegistrationYearMatchFilterCondition(year, i, BaseMethod.getAllElementsWithWaitForVisibility(driver, firstRegistrationMonthAndYear, 5)))
+                if (!checkFirstRegistrationYearMatchFilterCondition(year, i, textValues(searchResultForm, firstRegistrationMonthAndYear)))
                     return false;
             } else {
-                if (!checkSortedByPriceDescending(i, BaseMethod.getAllElementsWithWaitForVisibility(driver, carPrice, 5)))
+                if (!checkSortedByPriceDescending(i, textValues(searchResultForm, carPrice)))
                     return false;
             }
 
@@ -108,6 +117,8 @@ public class SearchPage {
                 driver.get(currentUrl + "&page=" + i);
             }
         }
+
+        //verify that all records was checked
         if (numForAllResults < getFoundResultNumber()) {
             System.out.println("Not all results was checked! Expected =" + getFoundResultNumber() + " Checked =" + numForAllResults);
             return false;
@@ -119,28 +130,36 @@ public class SearchPage {
         return checkMatchForAllResults(0);
     }
 
-    private Boolean checkFirstRegistrationYearMatchFilterCondition(int year, int i, List<WebElement> registrationMonthAndYearList) {
-        for (WebElement registrationMonthAndYear : registrationMonthAndYearList) {
-            numForAllResults++;
-            int indexOfSlash = registrationMonthAndYear.getText().indexOf("/");
-            int foundResultNum = Integer.parseInt(registrationMonthAndYear.getText().substring(indexOfSlash + 1).trim());
-            if (foundResultNum < year) {
-                System.out.println("Element " + registrationMonthAndYear + ", on page " + i +
-                        " does not match filter conditions, expected year not lower than " + year);
-                return false;
-            }
+    private Boolean checkFirstRegistrationYearMatchFilterCondition(int year, int i, List<String> registrationMonthAndYearList) {
+        //take only year from date
+        registrationMonthAndYearList.replaceAll(s -> {
+                    numForAllResults++;
+                    int indexOfSlash = s.indexOf("/");
+                    return s.substring(indexOfSlash + 1).trim();
+                }
+        );
+
+        // check if year filter is correct
+        Optional<String> result = registrationMonthAndYearList.stream()
+                .filter(num -> Integer.parseInt(num) < year)
+                .findAny();
+
+        if (result.isPresent()) {
+            System.out.println("Element, on page " + i +
+                    " does not match filter conditions, expected year not lower than " + year);
+            return false;
         }
+
         return true;
     }
 
-    private Boolean checkSortedByPriceDescending(int i, List<WebElement> prices) {
+    private Boolean checkSortedByPriceDescending(int i, List<String> prices) {
         //get first value
-        double previousPrice = Double.valueOf(prices.get(0).getText().substring(0, prices.get(0).getText().indexOf(" ")).trim());
+        double previousPrice = getNumberFromCurrency(prices.get(0));
 
-        for (WebElement price : prices) {
+        for (String price : prices) {
             numForAllResults++;
-            int indexOfAnd = price.getText().indexOf(" ");
-            double currentPrice = Double.valueOf(price.getText().substring(0, indexOfAnd).trim());
+            double currentPrice = getNumberFromCurrency(price);
             if (currentPrice <= previousPrice) {
                 previousPrice = currentPrice;
             } else if (currentPrice > previousPrice) {
@@ -151,4 +170,24 @@ public class SearchPage {
         }
         return true;
     }
+
+    //cut currency sign from money
+    private double getNumberFromCurrency(String money) {
+        return Double.valueOf(money.replaceAll("[^\\d.]+", ""));
+    }
+
+    //take text value from tags and convert webElement to string in List
+    private List<String> textValues(By searchResultForm, By recordInfo) {
+        BaseMethod.getAllElementsWithWaitForVisibility(driver, searchResultForm, 5);
+        return getValues(e -> e.getText(), recordInfo);
+    }
+
+    private List<String> getValues(Function<WebElement, String> pred, By recordInfo) {
+        List<WebElement> elements = driver.findElements(recordInfo);
+        List<String> values = elements.stream()
+                .map(pred)
+                .collect(Collectors.toList());
+        return values;
+    }
+
 }
